@@ -1,4 +1,5 @@
 import org.apache.hadoop.conf.Configured;
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
@@ -125,29 +126,51 @@ public class HITS extends Configured implements Tool {
 
     @Override
     public int run(String[] strings) throws Exception {
-        for (int i = 0; i < Config.ITERATIONS; i++) {
+        for (int i = 0; i < 2*Config.ITERATIONS; i++) {
 
             Job job = Job.getInstance(getConf());
             job.setJarByClass(HITS.class);
-            job.setJobName("main.java.HITS");
-
+            job.setJobName("HITS");
+            System.out.println(i);
             job.setInputFormatClass(TextInputFormat.class);
             if(i == 0) {
-                FileInputFormat.addInputPath(job, new Path(strings[0] + "_auth"));
-            } else if(i == 1) {
                 FileInputFormat.addInputPath(job, new Path(strings[0] + "_hub"));
+            } else if(i == 1) {
+                FileInputFormat.addInputPath(job, new Path(strings[0] + "_auth"));
             } else {
                 if(i%2 == 0) {
-                    FileInputFormat.addInputPath(job, new Path(strings[1] + "_auth_" + (i-1) + "/part-*"));
+                    FileInputFormat.addInputPath(job, new Path(strings[1] + "_hub_" + (i/2-1) + "/part-*"));
                 } else {
-                    FileInputFormat.addInputPath(job, new Path(strings[1] + "_hub_" + (i-1) + "/part-*"));
+                    FileInputFormat.addInputPath(job, new Path(strings[1] + "_auth_" + ((i-1)/2-1) + "/part-*"));
                 }
             }
 
-            if(i%2 == 0) {
-                FileOutputFormat.setOutputPath(job, new Path(strings[1] + "_auth_" + i));
+            if(i == 0) {
+                FileSystem fs = FileSystem.get(getConf());
+                if (fs.exists(new Path(strings[1] + "_auth_" + i/2))) {
+                    fs.delete(new Path(strings[1] + "_auth_" + i/2), true);
+                }
+                FileOutputFormat.setOutputPath(job, new Path(strings[1] + "_auth_" + i/2));
+            } else if(i == 1) {
+                FileSystem fs = FileSystem.get(getConf());
+                if (fs.exists(new Path(strings[1] + "_hub_" + (i-1)/2))) {
+                    fs.delete(new Path(strings[1] + "_hub_" + (i-1)/2), true);
+                }
+                FileOutputFormat.setOutputPath(job, new Path(strings[1] + "_hub_" + (i-1)/2));
             } else {
-                FileOutputFormat.setOutputPath(job, new Path(strings[1] + "_hub_" + i));
+                if (i%2 == 0) {
+                    FileSystem fs = FileSystem.get(getConf());
+                    if (fs.exists(new Path(strings[1] + "_auth_" + i/2))) {
+                        fs.delete(new Path(strings[1] + "_auth_" + i/2), true);
+                    }
+                    FileOutputFormat.setOutputPath(job, new Path(strings[1] + "_auth_" + i/2));
+                } else {
+                    FileSystem fs = FileSystem.get(getConf());
+                    if (fs.exists(new Path(strings[1] + "_hub_" + (i-1)/2))) {
+                        fs.delete(new Path(strings[1] + "_hub_" + (i-1)/2), true);
+                    }
+                    FileOutputFormat.setOutputPath(job, new Path(strings[1] + "_hub_" + (i-1)/2));
+                }
             }
 
             if(i%2 == 0) {
