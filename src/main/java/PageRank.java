@@ -19,30 +19,8 @@ import java.io.*;
 import java.util.ArrayList;
 
 public class PageRank extends Configured implements Tool {
-    /*
-    public static class GlobalVar {
-        public static double hangRank = 0;
-    }
-    */
     public static class PageRankMapper extends Mapper<LongWritable, Text, IntWritable, Text> {
-
-        long allNums = 0;
-        //double hangRank = 0;
-
-        @Override
-        protected void setup(Context context) throws IOException {
-            System.out.println("Start mapper");
-            Path graph = new Path(Config.URLS_IDX_PATH);
-            FileSystem fs = graph.getFileSystem(context.getConfiguration());
-            FSDataInputStream file = fs.open(graph);
-            BufferedReader reader = new BufferedReader(new InputStreamReader(file));
-            String line = reader.readLine();
-            while (line != null && !line.equals("")) {
-                allNums++;
-                line = reader.readLine();
-            }
-            reader.close();
-        }
+        double hangRank = 0;
 
         @Override
         protected void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
@@ -52,7 +30,7 @@ public class PageRank extends Configured implements Tool {
 
             String toNodes;
             if(adjVertex.length == 2) {
-                pageRank = (double) 1 / allNums;
+                pageRank = (double) 1 / Config.AllNums;
                 toNodes = adjVertex[1];
             } else {
                 pageRank = Double.valueOf(adjVertex[1]);
@@ -73,76 +51,51 @@ public class PageRank extends Configured implements Tool {
             if(toNodesList.size() != 0) {
                 double nextPageRank = pageRank / toNodesList.size();
                 for(Integer nextId : toNodesList) {
-                    //System.out.println(String.valueOf(nextId) + " " + String.valueOf(nextPageRank));
                     context.write(new IntWritable(nextId), new Text(String.valueOf(nextPageRank)));
                 }
             } else {
-                //System.out.println("context.getTaskAttemptID().getTaskID().toString()");
-                Path tmp = new Path(Config.HANG_RANK_PATH + context.getTaskAttemptID().getTaskID().toString());
-                FileSystem fs = tmp.getFileSystem(context.getConfiguration());
-
-                if(!fs.exists(tmp)) {
-                    FSDataOutputStream file = fs.create(tmp);
-                    BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(file));
-                    writer.write(String.valueOf(pageRank));
-                    //System.out.println(pageRank);
-                    writer.close();
-                } else {
-                    FSDataInputStream fileInput = fs.open(tmp);
-                    BufferedReader reader = new BufferedReader(new InputStreamReader(fileInput));
-                    double pageRankTmp = Double.valueOf(reader.readLine());
-                    reader.close();
-                    //System.out.println(pageRankTmp);
-                    FSDataOutputStream fileOutput = fs.create(tmp);
-                    BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(fileOutput));
-                    writer.write(String.valueOf(pageRank + pageRankTmp));
-                    writer.close();
-                }
-                //hangRank += pageRank;
+                hangRank = hangRank + pageRank;
             }
         }
 
         @Override
-        protected void cleanup(org.apache.hadoop.mapreduce.Mapper.Context context) throws IOException {
-            //GlobalVar.hangRank =+ hangRank;
-            System.out.println("End mapper");
+        protected void cleanup(Mapper.Context context) throws IOException{
+            Path tmp = new Path(Config.HANG_RANK_PATH + context.getTaskAttemptID().getTaskID().toString());
+            FileSystem fs = tmp.getFileSystem(context.getConfiguration());
+
+            FSDataOutputStream file = fs.create(tmp);
+            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(file));
+            writer.write(String.valueOf(hangRank));
+            writer.close();
         }
     }
 
     public static class PageRankReducer extends Reducer<IntWritable, Text, IntWritable, Text> {
-        double rankHang = 0, allNums;
+        double rankHang = 0;
 
         @Override
         protected void setup(Reducer.Context context) throws IOException {
             System.out.println("Start reducer");
             Path graph = new Path(Config.URLS_IDX_PATH);
             FileSystem fs = graph.getFileSystem(context.getConfiguration());
-            FSDataInputStream file = fs.open(graph);
-            BufferedReader reader = new BufferedReader(new InputStreamReader(file));
-            String line = reader.readLine();
-            while (line != null && !line.equals("")) {
-                allNums++;
-                line = reader.readLine();
-            }
-            reader.close();
 
             Path hangRankPath = new Path(Config.HANG_RANK_PATH);
             RemoteIterator<LocatedFileStatus> i = fs.listFiles(hangRankPath, false);
             while(i.hasNext()){
                 LocatedFileStatus fileStatus = i.next();
                 FSDataInputStream hangRankFile = fs.open(fileStatus.getPath());
-                reader = new BufferedReader(new InputStreamReader(hangRankFile));
+                BufferedReader reader = new BufferedReader(new InputStreamReader(hangRankFile));
                 double tmpRankHang = Double.valueOf(reader.readLine());
                 System.out.println(tmpRankHang);
                 rankHang = rankHang + tmpRankHang;
             }
-            rankHang = rankHang / allNums;
+            rankHang = rankHang / Config.AllNums;
             System.out.println("End reducer");
         }
 
         @Override
         protected void reduce(IntWritable key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
-            double pageRank = (1.0 - Config.D) * (1.0 / allNums) + Config.D * rankHang;
+            double pageRank = (1.0 - Config.D) * (1.0 / Config.AllNums) + Config.D * rankHang;
 
             String nextNodes = "";
             for (Text val: values) {
@@ -163,7 +116,7 @@ public class PageRank extends Configured implements Tool {
     @Override
     public int run(String[] strings) throws Exception {
         for (int i = 0; i < Config.ITERATIONS; i++) {
-
+            System.out.println("Job number: " + String.valueOf(i));
             Job job = Job.getInstance(getConf());
             job.setJarByClass(PageRank.class);
             job.setJobName("PageRank");
